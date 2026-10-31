@@ -1,0 +1,116 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Volume {
+  id        String   @id @default(cuid())
+  number    Int      @unique
+  year      Int      @unique
+  articles  Article[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([year])
+}
+
+model Article {
+  id              String        @id @default(cuid())
+  title           String
+  slug            String        @unique
+  abstract        String        @db.Text
+  status          ArticleStatus @default(DRAFT)
+  keywords        String[]      @default([])
+  pdfUrl          String?
+  doi             String?       @unique
+  pageStart       Int?
+  pageEnd         Int?
+  submittedDate   DateTime?
+  acceptedDate    DateTime?
+  publicationDate DateTime?
+
+  volumeId String?
+  volume   Volume? @relation(fields: [volumeId], references: [id], onDelete: Restrict)
+
+  issueNumber Int?
+
+  authors   ArticleAuthor[]
+  subfields ArticleSubfield[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([volumeId, issueNumber])
+  @@index([status, publicationDate])
+  @@index([volumeId, issueNumber])
+  @@index([title])
+}
+
+model Author {
+  id          String          @id @default(cuid())
+  fullName    String
+  email       String?
+  affiliation String?
+  orcid       String?         @unique
+  articles    ArticleAuthor[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([fullName])
+}
+
+model ArticleAuthor {
+  articleId   String
+  authorId    String
+  authorOrder Int
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  author  Author  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, authorId])
+  @@unique([articleId, authorOrder])
+  @@index([authorId])
+}
+
+model Subfield {
+  id          String            @id @default(cuid())
+  name        String            @unique
+  slug        String            @unique
+  description String?           @db.Text
+  sortOrder   Int               @default(0)
+  isActive    Boolean           @default(true)
+  articles    ArticleSubfield[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+model ArticleSubfield {
+  articleId  String
+  subfieldId String
+
+  article  Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  subfield Subfield @relation(fields: [subfieldId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, subfieldId])
+  @@index([subfieldId])
+}
