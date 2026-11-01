@@ -8,7 +8,7 @@ export const metadata = {
 
 const editorialMembers = [
   {
-    name: "ProfessorD. T. Agbalajobi",
+    name: "Professor D. T. Agbalajobi",
     role: "Editorial Board Member",
   },
   {

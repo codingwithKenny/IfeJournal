@@ -63,7 +63,7 @@ export default function Header() {
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#D5B36A] bg-white p-1 sm:h-9 sm:w-9"
           >
             <Image
-              src="/oaulogo.png"
+              src="/oauLogo.png"
               alt="Obafemi Awolowo University logo"
               width={36}
               height={36}
