@@ -5,12 +5,7 @@ import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Plus, Pencil, X, Save } from "lucide-react";
 
-export default function VolumeModal({
-  mode,
-  volume,
-  action,
-  journals = [],
-}) {
+export default function VolumeModal({ mode, volume, action }) {
   const [open, setOpen] = useState(false);
   const isEdit = mode === "edit";
 
@@ -47,14 +42,16 @@ export default function VolumeModal({
                 <p className="text-xs font-semibold uppercase tracking-widest text-[#8B6B2E]">
                   Ife Journal of Politics
                 </p>
+
                 <h2
                   id="volume-modal-title"
                   className="mt-2 font-serif text-2xl font-bold text-[#0B1F3A]"
                 >
                   {isEdit ? "Edit Volume" : "Create Volume"}
                 </h2>
+
                 <p className="mt-1 text-sm text-slate-500">
-                  Select a journal and set the volume number and publication year.
+                  Set the volume number and its publication year.
                 </p>
               </div>
 
@@ -75,116 +72,54 @@ export default function VolumeModal({
 
               <div className="space-y-5 px-6 py-6">
                 <div>
-                  <label className={labelClass} htmlFor="volume-journal">
-                    Journal *
+                  <label className={labelClass} htmlFor="volume-number">
+                    Volume Number *
                   </label>
-                  <select
-                    id="volume-journal"
-                    name="journalId"
+
+                  <input
+                    id="volume-number"
+                    name="number"
+                    type="number"
+                    min="1"
+                    step="1"
                     required
-                    defaultValue={volume?.journalId || ""}
-                    className={inputClass}
-                  >
-                    <option value="" disabled>
-                      Select a journal
-                    </option>
-
-                    {journals.map((journal) => (
-                      <option key={journal.id} value={journal.id}>
-                        {journal.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  {journals.length === 0 && (
-                    <p className="mt-2 text-xs text-amber-700">
-                      No active journals found. Create or activate a journal first.
-                    </p>
-                  )}
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className={labelClass} htmlFor="volume-number">
-                      Volume Number *
-                    </label>
-                    <input
-                      id="volume-number"
-                      name="number"
-                      type="number"
-                      min="1"
-                      step="1"
-                      required
-                      defaultValue={volume?.number ?? ""}
-                      placeholder="e.g. 3"
-                      className={inputClass}
-                    />
-                  </div>
-
-                  <div>
-                    <label className={labelClass} htmlFor="volume-year">
-                      Publication Year *
-                    </label>
-                    <input
-                      id="volume-year"
-                      name="year"
-                      type="number"
-                      min="1900"
-                      max="2200"
-                      step="1"
-                      required
-                      defaultValue={volume?.year ?? new Date().getFullYear()}
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className={labelClass} htmlFor="volume-title">
-                    Volume Title
-                  </label>
-                  <input
-                    id="volume-title"
-                    name="title"
-                    maxLength={200}
-                    defaultValue={volume?.title || ""}
-                    placeholder="Optional title"
+                    defaultValue={volume?.number ?? ""}
+                    placeholder="e.g. 3"
                     className={inputClass}
                   />
                 </div>
 
                 <div>
-                  <label className={labelClass} htmlFor="volume-description">
-                    Description
+                  <label className={labelClass} htmlFor="volume-year">
+                    Publication Year *
                   </label>
-                  <textarea
-                    id="volume-description"
-                    name="description"
-                    rows={4}
-                    maxLength={3000}
-                    defaultValue={volume?.description || ""}
-                    placeholder="Optional description of this volume..."
-                    className={`${inputClass} resize-y`}
+
+                  <input
+                    id="volume-year"
+                    name="year"
+                    type="number"
+                    min="1900"
+                    max="2200"
+                    step="1"
+                    required
+                    defaultValue={
+                      volume?.year ?? new Date().getFullYear()
+                    }
+                    className={inputClass}
                   />
                 </div>
 
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-4">
-                  <input
-                    type="checkbox"
-                    name="isPublished"
-                    defaultChecked={volume?.isPublished ?? false}
-                    className="mt-1 h-4 w-4 accent-[#0B1F3A]"
-                  />
-                  <span>
-                    <span className="block text-sm font-semibold text-[#0B1F3A]">
-                      Publish this volume
-                    </span>
-                    <span className="mt-1 block text-xs leading-5 text-slate-500">
-                      Mark this volume as published. This setting does not
-                      automatically publish its issues or articles.
-                    </span>
-                  </span>
-                </label>
+                <div className="rounded-xl border border-[#D5B36A]/40 bg-[#FAF5E9] p-4">
+                  <p className="text-sm font-semibold text-[#0B1F3A]">
+                    How volumes work
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    Each publication year has one volume. Published articles
+                    receive sequential issue numbers within that volume,
+                    starting from 1 each year.
+                  </p>
+                </div>
               </div>
 
               <div className="flex flex-col-reverse gap-3 border-t border-slate-100 bg-[#FAFAF8] px-6 py-4 sm:flex-row sm:justify-end">
@@ -224,4 +159,5 @@ function SubmitButton({ isEdit }) {
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#C2A15C] focus:ring-2 focus:ring-[#D5B36A]/20";
 
-const labelClass = "mb-2 block text-sm font-semibold text-[#0B1F3A]";
+const labelClass =
+  "mb-2 block text-sm font-semibold text-[#0B1F3A]";
