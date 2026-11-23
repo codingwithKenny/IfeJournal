@@ -102,11 +102,11 @@ export default async function AdminDashboard() {
             value={draftArticles}
             numberColor="text-[#8B6B2E]"
           />
-          <StatCard
+          {/* <StatCard
             label="Authors"
             value={authorCount}
             numberColor="text-slate-700"
-          />
+          /> */}
         </div>
       </section>
 

@@ -1,3 +1,4 @@
+
 import prisma from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import ArticleForm from "../new/ArticleForm";
@@ -34,24 +35,35 @@ export default async function EditArticlePage({ params }) {
     notFound();
   }
 
-  const subfields = await prisma.subfield.findMany({
-    where: {
-      OR: [
-        { isActive: true },
-        {
-          articles: {
-            some: { articleId: id },
+  const [subfields, volumes] = await Promise.all([
+    prisma.subfield.findMany({
+      where: {
+        OR: [
+          { isActive: true },
+          {
+            articles: {
+              some: { articleId: id },
+            },
           },
-        },
-      ],
-    },
-    orderBy: { name: "asc" },
-    select: {
-      id: true,
-      name: true,
-      isActive: true,
-    },
-  });
+        ],
+      },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+      },
+    }),
+
+    prisma.volume.findMany({
+      orderBy: { number: "asc" },
+      select: {
+        id: true,
+        number: true,
+        year: true,
+      },
+    }),
+  ]);
 
   const initialData = {
     id: article.id,
@@ -66,6 +78,9 @@ export default async function EditArticlePage({ params }) {
     acceptedDate: article.acceptedDate,
     publicationDate: article.publicationDate,
     status: article.status,
+
+    volumeId: article.volumeId || "",
+    issueNumber: article.issueNumber ?? "",
 
     authors: article.authors.map((item) => ({
       fullName: item.author.fullName,
@@ -109,6 +124,7 @@ export default async function EditArticlePage({ params }) {
 
       <ArticleForm
         subfields={subfields}
+        volumes={volumes}
         initialData={initialData}
         articleId={article.id}
       />

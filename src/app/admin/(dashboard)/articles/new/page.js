@@ -1,17 +1,29 @@
+
 import prisma from "@/lib/prisma";
 import ArticleForm from "./ArticleForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewArticlePage() {
-  const subfields = await prisma.subfield.findMany({
-    where: { isActive: true },
-    orderBy: { name: "asc" },
-    select: {
-      id: true,
-      name: true,
-    },
-  });
+  const [subfields, volumes] = await Promise.all([
+    prisma.subfield.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+      },
+    }),
+
+    prisma.volume.findMany({
+      orderBy: { number: "asc" },
+      select: {
+        id: true,
+        number: true,
+        year: true,
+      },
+    }),
+  ]);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -30,7 +42,7 @@ export default async function NewArticlePage() {
         </p>
       </div>
 
-      <ArticleForm subfields={subfields} />
+      <ArticleForm subfields={subfields} volumes={volumes} />
     </div>
   );
 }

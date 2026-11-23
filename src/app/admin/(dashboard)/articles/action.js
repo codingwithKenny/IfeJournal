@@ -71,7 +71,7 @@ function cleanOptional(value) {
 
 function friendlyError(error) {
   if (error?.code === "P2002") {
-    return "This record conflicts with an existing unique value, such as its name, DOI or slug.";
+    return "This record conflicts with an existing unique value, such as its name, DOI, slug, volume number, year or issue number.";
   }
 
   if (error?.code === "P2003") {
@@ -258,6 +258,30 @@ function normalizeInput(input) {
     }
   }
 
+  const volumeId = cleanOptional(input.volumeId);
+
+  const issueNumber =
+    input.issueNumber === "" || input.issueNumber == null
+      ? null
+      : Number(input.issueNumber);
+
+  if (
+    issueNumber !== null &&
+    (!Number.isSafeInteger(issueNumber) || issueNumber < 1)
+  ) {
+    throw new Error("Issue number must be a positive whole number.");
+  }
+
+  if (issueNumber !== null && !volumeId) {
+    throw new Error("Please select a volume for this issue number.");
+  }
+
+  if (status === "PUBLISHED" && (!volumeId || issueNumber === null)) {
+    throw new Error(
+      "Please select a volume and enter an issue number before publishing."
+    );
+  }
+
   return {
     title,
     abstract,
@@ -274,6 +298,8 @@ function normalizeInput(input) {
     pdfUrl,
     pageStart,
     pageEnd,
+    volumeId,
+    issueNumber,
     submittedDate: parseDate(input.submittedDate),
     acceptedDate: parseDate(input.acceptedDate),
     publicationDate: parseDate(input.publicationDate),
@@ -286,6 +312,40 @@ function normalizeInput(input) {
 | ARTICLE RELATION VALIDATION
 |--------------------------------------------------------------------------
 */
+
+async function validateVolumeIssue(data, articleId = null) {
+  if (data.issueNumber !== null && !data.volumeId) {
+    throw new Error("An issue number must belong to a selected volume.");
+  }
+
+  if (!data.volumeId) return;
+
+  const volume = await prisma.volume.findUnique({
+    where: { id: data.volumeId },
+    select: { id: true },
+  });
+
+  if (!volume) {
+    throw new Error("The selected volume does not exist.");
+  }
+
+  // if (data.issueNumber !== null) {
+  //   const existingIssue = await prisma.article.findFirst({
+  //     where: {
+  //       volumeId: data.volumeId,
+  //       issueNumber: data.issueNumber,
+  //       ...(articleId ? { id: { not: articleId } } : {}),
+  //     },
+  //     select: { id: true },
+  //   });
+
+  //   if (existingIssue) {
+  //     throw new Error(
+  //       `Issue ${data.issueNumber} is already assigned to another article in this volume.`
+  //     );
+  //   }
+  // }
+}
 
 async function validateRelations(data, articleId = null) {
   if (data.doi) {
@@ -325,6 +385,8 @@ async function validateRelations(data, articleId = null) {
       throw new Error("One or more selected subfields are unavailable.");
     }
   }
+
+  await validateVolumeIssue(data, articleId);
 }
 
 /*
@@ -404,145 +466,6 @@ async function saveSubfields(tx, articleId, subfieldIds) {
 
 /*
 |--------------------------------------------------------------------------
-| AUTOMATIC VOLUME AND ISSUE NUMBERING
-|--------------------------------------------------------------------------
-|
-| 2026 = Volume 1
-| 2027 = Volume 2
-| 2028 = Volume 3
-|
-| Only published articles receive a volume and issue number.
-| Each published article gets its own sequential issue number.
-|--------------------------------------------------------------------------
-*/
-
-const FIRST_VOLUME_YEAR = 2026;
-
-async function getOrCreateVolume(tx, year) {
-  if (
-    !Number.isInteger(year) ||
-    year < FIRST_VOLUME_YEAR ||
-    year > 2200
-  ) {
-    throw new Error(
-      `Publication year must be ${FIRST_VOLUME_YEAR} or later.`
-    );
-  }
-
-  const number = year - FIRST_VOLUME_YEAR + 1;
-
-  return tx.volume.upsert({
-    where: { year },
-    create: {
-      year,
-      number,
-    },
-    update: {},
-  });
-}
-
-/*
-|--------------------------------------------------------------------------
-| FAST ISSUE RENUMBERING
-|--------------------------------------------------------------------------
-|
-| PostgreSQL ROW_NUMBER() assigns all issue numbers in one operation.
-| This avoids sequential article updates and reduces transaction time.
-|--------------------------------------------------------------------------
-*/
-
-async function renumberVolume(tx, volumeId) {
-  if (!volumeId) return;
-
-  // Clear existing numbers first to avoid unique constraint conflicts.
-  await tx.article.updateMany({
-    where: {
-      volumeId,
-      status: "PUBLISHED",
-    },
-    data: {
-      issueNumber: null,
-    },
-  });
-
-  // Reassign issue numbers in publication-date order.
-  await tx.$executeRaw`
-    WITH ranked_articles AS (
-      SELECT
-        "id",
-        ROW_NUMBER() OVER (
-          ORDER BY
-            "publicationDate" ASC,
-            "createdAt" ASC,
-            "id" ASC
-        )::INTEGER AS new_issue_number
-      FROM "Article"
-      WHERE
-        "volumeId" = ${volumeId}
-        AND "status" = 'PUBLISHED'
-    )
-    UPDATE "Article" AS article
-    SET "issueNumber" = ranked_articles.new_issue_number
-    FROM ranked_articles
-    WHERE article."id" = ranked_articles."id";
-  `;
-}
-
-/*
-|--------------------------------------------------------------------------
-| SYNCHRONIZE PUBLICATION
-|--------------------------------------------------------------------------
-*/
-
-async function synchronizePublication(
-  tx,
-  articleId,
-  previousVolumeId,
-  status,
-  publicationDate
-) {
-  if (status !== "PUBLISHED") {
-    await tx.article.update({
-      where: { id: articleId },
-      data: {
-        status: "DRAFT",
-        volumeId: null,
-        issueNumber: null,
-        publicationDate,
-      },
-    });
-
-    if (previousVolumeId) {
-      await renumberVolume(tx, previousVolumeId);
-    }
-
-    return;
-  }
-
-  const effectivePublicationDate = publicationDate || new Date();
-  const year = effectivePublicationDate.getUTCFullYear();
-
-  const volume = await getOrCreateVolume(tx, year);
-
-  await tx.article.update({
-    where: { id: articleId },
-    data: {
-      status: "PUBLISHED",
-      publicationDate: effectivePublicationDate,
-      volumeId: volume.id,
-      issueNumber: null,
-    },
-  });
-
-  if (previousVolumeId && previousVolumeId !== volume.id) {
-    await renumberVolume(tx, previousVolumeId);
-  }
-
-  await renumberVolume(tx, volume.id);
-}
-
-/*
-|--------------------------------------------------------------------------
 | TRANSACTION OPTIONS
 |--------------------------------------------------------------------------
 */
@@ -552,6 +475,81 @@ const transactionOptions = {
   maxWait: 10000,
   timeout: 15000,
 };
+
+/*
+|--------------------------------------------------------------------------
+| CREATE VOLUME
+|--------------------------------------------------------------------------
+*/
+
+export async function createVolume(input) {
+  try {
+    await requireAdmin();
+
+    if (!input || typeof input !== "object") {
+      throw new Error("Invalid volume information.");
+    }
+
+    const number = Number(input.number);
+    const year = Number(input.year);
+
+    if (!Number.isSafeInteger(number) || number < 1) {
+      throw new Error("Volume number must be a positive whole number.");
+    }
+
+    if (!Number.isSafeInteger(year) || year < 1) {
+      throw new Error("Publication year must be a valid whole number.");
+    }
+
+    const existingVolume = await prisma.volume.findFirst({
+      where: {
+        OR: [{ number }, { year }],
+      },
+      select: {
+        number: true,
+        year: true,
+      },
+    });
+
+    if (existingVolume) {
+      if (existingVolume.number === number) {
+        throw new Error(`Volume ${number} already exists.`);
+      }
+
+      if (existingVolume.year === year) {
+        throw new Error(`A volume for ${year} already exists.`);
+      }
+    }
+
+    const volume = await prisma.volume.create({
+      data: {
+        number,
+        year,
+      },
+      select: {
+        id: true,
+        number: true,
+        year: true,
+      },
+    });
+
+    revalidateArticlePages();
+    revalidatePath("/admin/articles/new");
+
+    return {
+      success: true,
+      message: `Volume ${number} (${year}) created successfully.`,
+      volume,
+    };
+  } catch (error) {
+    console.error("Create volume error:", error);
+
+    return {
+      success: false,
+      error: friendlyError(error),
+    };
+  }
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -572,6 +570,11 @@ export async function createArticle(input) {
       data.title
     );
 
+    const publicationDate =
+      data.status === "PUBLISHED"
+        ? data.publicationDate || new Date()
+        : data.publicationDate;
+
     const article = await prisma.$transaction(
       async (tx) => {
         const created = await tx.article.create({
@@ -579,7 +582,7 @@ export async function createArticle(input) {
             title: data.title,
             slug,
             abstract: data.abstract,
-            status: "DRAFT",
+            status: data.status,
             keywords: data.keywords,
             doi: data.doi,
             pdfUrl: data.pdfUrl,
@@ -587,7 +590,9 @@ export async function createArticle(input) {
             pageEnd: data.pageEnd,
             submittedDate: data.submittedDate,
             acceptedDate: data.acceptedDate,
-            publicationDate: data.publicationDate,
+            publicationDate,
+            volumeId: data.volumeId,
+            issueNumber: data.issueNumber,
           },
         });
 
@@ -598,16 +603,6 @@ export async function createArticle(input) {
           created.id,
           data.subfieldIds
         );
-
-        if (data.status === "PUBLISHED") {
-          await synchronizePublication(
-            tx,
-            created.id,
-            null,
-            "PUBLISHED",
-            data.publicationDate || new Date()
-          );
-        }
 
         return created;
       },
@@ -654,8 +649,6 @@ export async function updateArticle(articleId, input) {
         id: true,
         title: true,
         slug: true,
-        status: true,
-        volumeId: true,
         publicationDate: true,
       },
     });
@@ -690,6 +683,7 @@ export async function updateArticle(articleId, input) {
             title: data.title,
             slug,
             abstract: data.abstract,
+            status: data.status,
             keywords: data.keywords,
             doi: data.doi,
             pdfUrl: data.pdfUrl,
@@ -698,6 +692,8 @@ export async function updateArticle(articleId, input) {
             submittedDate: data.submittedDate,
             acceptedDate: data.acceptedDate,
             publicationDate: effectivePublicationDate,
+            volumeId: data.volumeId,
+            issueNumber: data.issueNumber,
           },
         });
 
@@ -707,14 +703,6 @@ export async function updateArticle(articleId, input) {
           tx,
           articleId,
           data.subfieldIds
-        );
-
-        await synchronizePublication(
-          tx,
-          articleId,
-          existing.volumeId,
-          data.status,
-          effectivePublicationDate
         );
       },
       transactionOptions
@@ -751,38 +739,15 @@ export async function deleteArticle(articleId) {
       throw new Error("Article ID is required.");
     }
 
-    await prisma.$transaction(
-      async (tx) => {
-        const article = await tx.article.findUnique({
-          where: { id: articleId },
-          select: {
-            id: true,
-            volumeId: true,
-          },
-        });
-
-        if (!article) {
-          throw new Error("Article not found.");
-        }
-
-        const previousVolumeId = article.volumeId;
-
-        await tx.article.delete({
-          where: { id: articleId },
-        });
-
-        if (previousVolumeId) {
-          await renumberVolume(tx, previousVolumeId);
-        }
-      },
-      transactionOptions
-    );
+    await prisma.article.delete({
+      where: { id: articleId },
+    });
 
     revalidateArticlePages();
 
     return {
       success: true,
-      message: "Article deleted successfully and issue numbers updated.",
+      message: "Article deleted successfully.",
     };
   } catch (error) {
     console.error("Delete article error:", error);
@@ -808,32 +773,38 @@ export async function publishArticle(articleId) {
       throw new Error("Article ID is required.");
     }
 
-    await prisma.$transaction(
-      async (tx) => {
-        const article = await tx.article.findUnique({
-          where: { id: articleId },
-          select: {
-            id: true,
-            status: true,
-            volumeId: true,
-            publicationDate: true,
-          },
-        });
-
-        if (!article) {
-          throw new Error("Article not found.");
-        }
-
-        await synchronizePublication(
-          tx,
-          article.id,
-          article.volumeId,
-          "PUBLISHED",
-          article.publicationDate || new Date()
-        );
+    const article = await prisma.article.findUnique({
+      where: { id: articleId },
+      select: {
+        id: true,
+        volumeId: true,
+        issueNumber: true,
+        publicationDate: true,
       },
-      transactionOptions
-    );
+    });
+
+    if (!article) {
+      throw new Error("Article not found.");
+    }
+
+    if (!article.volumeId || article.issueNumber === null) {
+      throw new Error(
+        "Assign a volume and issue number before publishing this article."
+      );
+    }
+
+    await validateVolumeIssue({
+      volumeId: article.volumeId,
+      issueNumber: article.issueNumber,
+    }, articleId);
+
+    await prisma.article.update({
+      where: { id: articleId },
+      data: {
+        status: "PUBLISHED",
+        publicationDate: article.publicationDate || new Date(),
+      },
+    });
 
     revalidateArticlePages();
 
@@ -865,37 +836,18 @@ export async function unpublishArticle(articleId) {
       throw new Error("Article ID is required.");
     }
 
-    await prisma.$transaction(
-      async (tx) => {
-        const article = await tx.article.findUnique({
-          where: { id: articleId },
-          select: {
-            id: true,
-            volumeId: true,
-            publicationDate: true,
-          },
-        });
-
-        if (!article) {
-          throw new Error("Article not found.");
-        }
-
-        await synchronizePublication(
-          tx,
-          article.id,
-          article.volumeId,
-          "DRAFT",
-          article.publicationDate
-        );
+    await prisma.article.update({
+      where: { id: articleId },
+      data: {
+        status: "DRAFT",
       },
-      transactionOptions
-    );
+    });
 
     revalidateArticlePages();
 
     return {
       success: true,
-      message: "Article moved back to draft and issue numbers updated.",
+      message: "Article moved back to draft successfully.",
     };
   } catch (error) {
     console.error("Unpublish article error:", error);

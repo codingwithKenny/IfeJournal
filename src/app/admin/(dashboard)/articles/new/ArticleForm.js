@@ -18,6 +18,7 @@ import {
   createArticle,
   updateArticle,
   uploadArticlePdf,
+  createVolume,
 } from "../action";
 
 const emptyAuthor = () => ({
@@ -46,6 +47,7 @@ function formatDateForInput(value) {
 
 export default function ArticleForm({
   subfields = [],
+  volumes: initialVolumes = [],
   initialData = null,
   articleId = null,
 }) {
@@ -63,6 +65,8 @@ export default function ArticleForm({
     acceptedDate: formatDateForInput(initialData?.acceptedDate),
     publicationDate: formatDateForInput(initialData?.publicationDate),
     status: initialData?.status || "DRAFT",
+    volumeId: initialData?.volumeId || "",
+    issueNumber: initialData?.issueNumber ?? "",
     authors:
       initialData?.authors?.length > 0
         ? initialData.authors
@@ -70,11 +74,20 @@ export default function ArticleForm({
     subfieldIds: initialData?.subfieldIds || [],
   }));
 
+  const [volumes, setVolumes] = useState(initialVolumes);
+
   const [loading, setLoading] = useState(false);
   const [uploadingPdf, setUploadingPdf] = useState(false);
+
   const [error, setError] = useState("");
   const [pdfError, setPdfError] = useState("");
   const [pdfSuccess, setPdfSuccess] = useState("");
+
+  const [showCreateVolume, setShowCreateVolume] = useState(false);
+  const [newVolumeNumber, setNewVolumeNumber] = useState("");
+  const [newVolumeYear, setNewVolumeYear] = useState("");
+  const [creatingVolume, setCreatingVolume] = useState(false);
+  const [volumeError, setVolumeError] = useState("");
 
   function updateField(name, value) {
     setForm((current) => ({
@@ -113,6 +126,53 @@ export default function ArticleForm({
       ...current,
       authors: current.authors.filter((_, i) => i !== index),
     }));
+  }
+
+  async function handleCreateVolume() {
+    if (creatingVolume) return;
+
+    setVolumeError("");
+
+    const number = Number(newVolumeNumber);
+    const year = Number(newVolumeYear);
+
+    if (!Number.isInteger(number) || number < 1) {
+      setVolumeError("Enter a valid positive volume number.");
+      return;
+    }
+
+    if (!Number.isInteger(year) || year < 1) {
+      setVolumeError("Enter a valid publication year.");
+      return;
+    }
+
+    setCreatingVolume(true);
+
+    try {
+      const result = await createVolume({ number, year });
+
+      if (!result?.success) {
+        setVolumeError(result?.error || "Unable to create volume.");
+        return;
+      }
+
+      const createdVolume = result.volume;
+
+      setVolumes((current) =>
+        [...current, createdVolume].sort((a, b) => a.number - b.number)
+      );
+
+      updateField("volumeId", createdVolume.id);
+
+      setNewVolumeNumber("");
+      setNewVolumeYear("");
+      setShowCreateVolume(false);
+    } catch (err) {
+      console.error("Create volume error:", err);
+      setVolumeError(err.message || "Unable to create volume.");
+    } finally {
+      setCreatingVolume(false);
+    }
   }
 
   async function handlePdfUpload(event) {
@@ -229,6 +289,24 @@ export default function ArticleForm({
       return;
     }
 
+    if (form.issueNumber && (
+      !Number.isInteger(Number(form.issueNumber)) ||
+      Number(form.issueNumber) < 1
+    )) {
+      setError("The issue number must be a positive whole number.");
+      return;
+    }
+
+    if (form.issueNumber && !form.volumeId) {
+      setError("Please select a volume for this issue number.");
+      return;
+    }
+
+    if (form.status === "PUBLISHED" && (!form.volumeId || !form.issueNumber)) {
+      setError("Please select a volume and enter an issue number before publishing.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -247,6 +325,8 @@ export default function ArticleForm({
         acceptedDate: form.acceptedDate,
         publicationDate: form.publicationDate,
         status: form.status,
+        volumeId: form.volumeId || null,
+        issueNumber: form.issueNumber ? Number(form.issueNumber) : null,
         authors: validAuthors,
         subfieldIds: form.subfieldIds,
       };
@@ -706,8 +786,133 @@ export default function ArticleForm({
               className={inputClass}
             />
             <p className="mt-2 text-xs text-slate-400">
-              The publication year determines the volume. The issue number is
-              assigned automatically when the article is published.
+              Select the original volume and enter the article's issue number
+              below. These values are assigned manually.
+            </p>
+          </div>
+
+          {/* Volume selection */}
+          <div>
+            <label htmlFor="article-volume" className={labelClass}>
+              Volume
+            </label>
+
+            <select
+              id="article-volume"
+              value={form.volumeId}
+              onChange={(e) => updateField("volumeId", e.target.value)}
+              className={inputClass}
+            >
+              <option value="">Select a volume</option>
+
+              {volumes.map((volume) => (
+                <option key={volume.id} value={volume.id}>
+                  Volume {volume.number} ({volume.year})
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateVolume((current) => !current);
+                setVolumeError("");
+              }}
+              className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-[#8B6B2E] hover:underline"
+            >
+              <Plus size={15} />
+              Create New Volume
+            </button>
+
+            {showCreateVolume && (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-[#FAFAF8] p-4">
+                <h3 className="mb-4 text-sm font-bold text-[#0B1F3A]">
+                  Create Volume
+                </h3>
+
+                <div className="grid gap-4">
+                  <div>
+                    <label htmlFor="new-volume-number" className={labelClass}>
+                      Volume Number
+                    </label>
+                    <input
+                      id="new-volume-number"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={newVolumeNumber}
+                      onChange={(e) => setNewVolumeNumber(e.target.value)}
+                      placeholder="e.g. 1"
+                      className={inputClass}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="new-volume-year" className={labelClass}>
+                      Publication Year
+                    </label>
+                    <input
+                      id="new-volume-year"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={newVolumeYear}
+                      onChange={(e) => setNewVolumeYear(e.target.value)}
+                      placeholder="e.g. 2018"
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+
+                {volumeError && (
+                  <p role="alert" className="mt-3 text-sm text-red-600">
+                    {volumeError}
+                  </p>
+                )}
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCreateVolume}
+                    disabled={creatingVolume}
+                    className="rounded-lg bg-[#0B1F3A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#15345B] disabled:opacity-60"
+                  >
+                    {creatingVolume ? "Creating..." : "Create Volume"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateVolume(false)}
+                    disabled={creatingVolume}
+                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Manual issue number */}
+          <div>
+            <label htmlFor="article-issue" className={labelClass}>
+              Issue Number
+            </label>
+
+            <input
+              id="article-issue"
+              type="number"
+              min="1"
+              step="1"
+              value={form.issueNumber}
+              onChange={(e) => updateField("issueNumber", e.target.value)}
+              placeholder="e.g. 1"
+              className={inputClass}
+            />
+
+            <p className="mt-2 text-xs text-slate-400">
+              Enter the article's original issue number within the selected
+              volume.
             </p>
           </div>
         </div>
@@ -763,8 +968,8 @@ export default function ArticleForm({
                 Publish Article
               </span>
               <span className="mt-1 block text-xs text-slate-500">
-                Publish the article and automatically assign its volume and
-                issue number.
+                Publish the article using the volume and issue number you
+                selected.
               </span>
             </span>
           </label>
@@ -783,7 +988,7 @@ export default function ArticleForm({
 
         <button
           type="submit"
-          disabled={loading || uploadingPdf}
+          disabled={loading || uploadingPdf || creatingVolume}
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#0B1F3A] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#15345B] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? (

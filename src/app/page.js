@@ -1,6 +1,7 @@
 
 import Link from "next/link";
 import prisma from "@/lib/prisma";
+import SubmitManuscriptModal from "@/app/components/SubmitManuscriptModal";
 
 export const revalidate = 300;
 
@@ -150,7 +151,7 @@ export default async function Home() {
               research across the journal&apos;s collection.
             </p>
 
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Link
                 href="/articles"
                 className="inline-flex min-h-12 items-center justify-center gap-3 bg-[#D5B36A] px-6 py-3.5 text-sm font-bold text-[#0B1F3A] transition hover:bg-[#E7CC91] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1F3A]"
@@ -166,6 +167,8 @@ export default async function Home() {
                 Meet the Editorial Board
                 <ArrowIcon />
               </Link>
+
+              <SubmitManuscriptModal />
             </div>
 
             <div className="mt-10 flex items-start gap-3 border-t border-white/15 pt-6">

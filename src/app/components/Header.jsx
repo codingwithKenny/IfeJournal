@@ -7,7 +7,7 @@ import { useRef } from "react";
 
 const navigation = [
   { label: "Home", href: "/" },
-  // { label: "Journal", href: "/journal" },
+  // { label: "About", href: "/about" },
   { label: "Articles", href: "/articles" },
   { label: "Editorial Board", href: "/editorial-board" },
   { label: "For Authors", href: "/author-guidelines" },
